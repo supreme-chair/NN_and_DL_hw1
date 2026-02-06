@@ -23,7 +23,7 @@ let isModelReady = false;
 let isReviewsLoaded = false;
 
 // URL вашего Google Apps Script Web App (ЗАМЕНИТЕ НА СВОЙ)
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz8sXvVVxnR1QNymzHFgNZcoSg7sUBavs6jXbfcuzGox2XIf5rtCNNDWtpVxM1JIqGPvg/exec';
 
 /**
  * Обновляет статусное сообщение

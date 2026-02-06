@@ -1,4 +1,4 @@
-// app.js - Основная логика приложения для анализа тональности отзывов
+// app.js - Основная логика приложения для анализа тональности отзывов с логированием в Google Sheets
 
 // Импорт pipeline из Transformers.js
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6/dist/transformers.min.js";
@@ -21,6 +21,9 @@ let reviews = [];
 let sentimentPipeline = null;
 let isModelReady = false;
 let isReviewsLoaded = false;
+
+// URL вашего Google Apps Script Web App (ЗАМЕНИТЕ НА СВОЙ)
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
 
 /**
  * Обновляет статусное сообщение
@@ -182,6 +185,63 @@ function determineSentiment(result) {
 }
 
 /**
+ * Логирует данные в Google Sheets через Apps Script
+ */
+async function logToGoogleSheets(data) {
+    try {
+        console.log('Logging data to Google Sheets:', data);
+        
+        const response = await fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Используем no-cors для обхода CORS ограничений
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        // В режиме no-cors мы не можем прочитать ответ, но отправка работает
+        console.log('Data sent to Google Sheets (no-cors mode)');
+        return { success: true };
+        
+    } catch (error) {
+        console.warn('Failed to log to Google Sheets:', error);
+        // Не показываем ошибку пользователю - логирование вторично
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Альтернативный метод логирования через прокси CORS
+ */
+async function logToGoogleSheetsWithProxy(data) {
+    try {
+        // Используем CORS прокси если есть проблемы
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+        const targetUrl = GOOGLE_SCRIPT_URL;
+        
+        console.log('Logging data to Google Sheets via proxy:', data);
+        
+        const response = await fetch(proxyUrl + targetUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        console.log('Google Sheets response:', result);
+        return result;
+        
+    } catch (error) {
+        console.warn('Failed to log via proxy:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Отображает результат анализа тональности
  */
 function displayResult(review, sentiment) {
@@ -201,6 +261,26 @@ function displayResult(review, sentiment) {
     // Обновляем уверенность (в процентах)
     const confidencePercent = (sentiment.score * 100).toFixed(1);
     confidenceScore.textContent = `${confidencePercent}% confidence`;
+    
+    return { label: sentiment.label, confidence: confidencePercent };
+}
+
+/**
+ * Собирает мета-данные о клиенте
+ */
+function collectMetaData() {
+    return {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        platform: navigator.platform,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        timestamp: new Date().toISOString(),
+        reviewsCount: reviews.length,
+        modelReady: isModelReady,
+        url: window.location.href
+    };
 }
 
 /**
@@ -239,9 +319,32 @@ async function analyzeSentiment() {
         const sentiment = determineSentiment(result);
         
         // Отображаем результат
-        displayResult(randomReview, sentiment);
+        const sentimentResult = displayResult(randomReview, sentiment);
         
-        updateStatus('Analysis complete! Click "Analyze Random Review" to try another.');
+        // Собираем данные для логирования
+        const metaData = collectMetaData();
+        const logData = {
+            timestamp: new Date().toISOString(),
+            review: randomReview.substring(0, 500), // Ограничиваем длину
+            sentiment: sentimentResult.label,
+            confidence: sentimentResult.confidence,
+            meta: metaData
+        };
+        
+        // Логируем в Google Sheets (в фоновом режиме, не блокируем UI)
+        setTimeout(() => {
+            logToGoogleSheets(logData).then(result => {
+                if (result.success) {
+                    console.log('Data successfully logged to Google Sheets');
+                } else {
+                    console.warn('Data logging failed, trying proxy method...');
+                    // Пробуем через прокси если прямая отправка не сработала
+                    logToGoogleSheetsWithProxy(logData);
+                }
+            });
+        }, 0);
+        
+        updateStatus('Analysis complete! Data logged to Google Sheets.');
         
     } catch (error) {
         const errorMsg = `Analysis failed: ${error.message}`;

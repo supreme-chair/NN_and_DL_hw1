@@ -227,23 +227,38 @@ async function loadModel() {
     }
 }
 
-// ===== ЛОГИРОВАНИЕ =====
+// ===== ЛОГИРОВАНИЕ - ИСПРАВЛЕННАЯ ВЕРСИЯ =====
 async function logToSheet(data) {
     try {
         console.log('📤 Отправляем данные:', data);
         
-        // Используем Image для отправки (без CORS проблем)
-        const img = new Image();
+        // Создаем URL с параметрами
         const params = new URLSearchParams({
             timestamp: data.timestamp,
-            review: data.review.substring(0, 100),
+            review: data.review.substring(0, 200),
             sentiment: data.sentiment,
             confidence: data.confidence,
             action_taken: data.action_taken,
             meta: JSON.stringify(data.meta)
         });
         
-        img.src = SHEET_URL + '?' + params.toString();
+        const url = SHEET_URL + '?' + params.toString();
+        console.log('📤 URL:', url);
+        
+        // Пробуем отправить через fetch
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                mode: 'no-cors'
+            });
+            console.log('📤 Fetch отправлен');
+        } catch (fetchError) {
+            console.warn('Fetch error, пробуем Image:', fetchError);
+            
+            // Если fetch не работает, пробуем Image
+            const img = new Image();
+            img.src = url;
+        }
         
         if (footerDiv) {
             footerDiv.innerHTML = '✅ Данные отправлены';
@@ -257,6 +272,7 @@ async function logToSheet(data) {
             footerDiv.style.color = '#f44336';
         }
     }
+}
 }
 
 // ===== АНАЛИЗ =====

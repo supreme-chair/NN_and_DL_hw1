@@ -8,13 +8,18 @@ const statusDiv = document.getElementById('status');
 const errorDiv = document.getElementById('error');
 const footerDiv = document.getElementById('footer');
 
-// СОЗДАЕМ элемент для действий, если его нет - ИСПОЛЬЗУЕМ LET, А НЕ CONST
+// СОЗДАЕМ элемент для действий - ПРОСТО СОЗДАЕМ НОВЫЙ, ЕСЛИ ЕГО НЕТ
 let actionDiv = document.getElementById('action-result');
 if (!actionDiv) {
     actionDiv = document.createElement('div');
     actionDiv.id = 'action-result';
     actionDiv.style.marginTop = '20px';
-    document.querySelector('.container').appendChild(actionDiv);
+    // Добавляем после результата
+    if (resultDiv && resultDiv.parentNode) {
+        resultDiv.parentNode.insertBefore(actionDiv, resultDiv.nextSibling);
+    } else {
+        document.querySelector('.container').appendChild(actionDiv);
+    }
 }
 
 // ===== ПЕРЕМЕННЫЕ =====
@@ -23,7 +28,7 @@ let model = null;
 let isModelReady = false;
 let isDataLoaded = false;
 
-// URL для логирования
+// URL для логирования - исправляем формат для Google Apps Script
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxrjX3Amx_6IybZfRbZkTjh-gSOTTSE_IG9IaHnrg__hcXa_HQQ2wKmub0pO07CCF0yFQ/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -55,7 +60,7 @@ function showResult(text, type) {
  * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ
  */
 function determineBusinessAction(confidence, label) {
-    console.log('🧠 Принимаем решение на основе:', { label, confidence });
+    console.log('🧠 Принимаем решение:', { label, confidence });
     
     let normalizedScore = 0.5;
     
@@ -73,8 +78,7 @@ function determineBusinessAction(confidence, label) {
             uiMessage: "🚨 Нам искренне жаль! Пожалуйста, примите купон на 50% скидку.",
             uiColor: "#ef4444",
             icon: "fa-gift",
-            buttonText: "Получить купон",
-            bgColor: "#fee2e2"
+            buttonText: "Получить купон"
         };
     } else if (normalizedScore < 0.7) {
         return {
@@ -82,8 +86,7 @@ function determineBusinessAction(confidence, label) {
             uiMessage: "📝 Спасибо! Расскажите подробнее, как мы можем улучшить сервис?",
             uiColor: "#6b7280",
             icon: "fa-comment",
-            buttonText: "Оставить отзыв",
-            bgColor: "#f3f4f6"
+            buttonText: "Оставить отзыв"
         };
     } else {
         return {
@@ -91,8 +94,7 @@ function determineBusinessAction(confidence, label) {
             uiMessage: "⭐ Рады, что вам понравилось! Порекомендуйте нас друзьям и получите бонусы.",
             uiColor: "#3b82f6",
             icon: "fa-share-alt",
-            buttonText: "Пригласить друзей",
-            bgColor: "#dbeafe"
+            buttonText: "Пригласить друзей"
         };
     }
 }
@@ -106,63 +108,45 @@ function showAction(decision) {
         return;
     }
     
-    console.log('🎯 Показываем действие:', decision);
+    console.log('🎯 Показываем действие:', decision.actionCode);
     
-    const actionHtml = `
+    actionDiv.innerHTML = `
         <div style="
-            background: ${decision.bgColor};
+            background: ${decision.uiColor}20;
             border: 2px solid ${decision.uiColor};
-            border-radius: 12px;
-            padding: 25px;
+            border-radius: 10px;
+            padding: 20px;
             margin: 20px 0;
             text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            animation: fadeIn 0.5s ease;
         ">
             <i class="fas ${decision.icon}" style="
-                font-size: 48px;
+                font-size: 36px;
                 color: ${decision.uiColor};
-                margin-bottom: 15px;
-                display: block;
+                margin-bottom: 10px;
             "></i>
             <p style="
-                font-size: 18px;
-                color: #1f2937;
-                margin: 15px 0;
-                line-height: 1.5;
+                font-size: 16px;
+                color: #333;
+                margin: 10px 0;
                 font-weight: 500;
             ">${decision.uiMessage}</p>
             <button onclick="alert('✅ ${decision.actionCode}')" style="
                 background: ${decision.uiColor};
                 color: white;
                 border: none;
-                padding: 12px 30px;
-                border-radius: 8px;
+                padding: 10px 20px;
+                border-radius: 5px;
                 cursor: pointer;
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: 600;
                 margin-top: 10px;
-                transition: transform 0.2s;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            " onmouseover="this.style.transform='scale(1.05)'" 
-               onmouseout="this.style.transform='scale(1)'">
+            ">
                 ${decision.buttonText}
             </button>
         </div>
     `;
     
-    actionDiv.innerHTML = actionHtml;
     actionDiv.style.display = 'block';
-    
-    // Добавляем анимацию
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    `;
-    document.head.appendChild(style);
 }
 
 // ===== ЗАГРУЗКА ДАННЫХ =====
@@ -197,14 +181,13 @@ async function loadReviews() {
     } catch (error) {
         console.warn('Ошибка загрузки:', error);
         
+        // Тестовые данные
         reviews = [
             "This product is amazing! I love it so much. Best purchase ever!",
             "Terrible quality, broke after 2 days. Very disappointed.",
             "It's okay, nothing special but works.",
             "Absolutely fantastic! Best purchase ever.",
-            "Waste of money. Don't buy this.",
-            "Good value for the price, would recommend.",
-            "The worst experience I've ever had."
+            "Waste of money. Don't buy this."
         ];
         
         showError('Используются тестовые данные');
@@ -231,6 +214,7 @@ async function loadModel() {
     } catch (error) {
         console.error('Ошибка модели:', error);
         
+        // Тестовая модель
         model = async (text) => {
             const rand = Math.random();
             if (rand > 0.6) return [{ label: 'POSITIVE', score: 0.95 }];
@@ -247,30 +231,23 @@ async function loadModel() {
 // ===== ЛОГИРОВАНИЕ =====
 async function logToSheet(data) {
     try {
-        console.log('📤 Отправляем в Google Sheets:', data);
+        console.log('📤 Отправляем данные:', data);
         
-        // Используем fetch с no-cors режимом
-        const formData = new URLSearchParams();
-        formData.append('timestamp', data.timestamp);
-        formData.append('review', data.review);
-        formData.append('sentiment', data.sentiment);
-        formData.append('confidence', data.confidence);
-        formData.append('action_taken', data.action_taken);
-        formData.append('meta', JSON.stringify(data.meta));
-        
-        const response = await fetch(SHEET_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: formData.toString()
+        // Простой способ отправить данные (без ожидания ответа)
+        const img = new Image();
+        const params = new URLSearchParams({
+            timestamp: data.timestamp,
+            review: data.review.substring(0, 100),
+            sentiment: data.sentiment,
+            confidence: data.confidence,
+            action_taken: data.action_taken,
+            meta: JSON.stringify(data.meta)
         });
         
-        console.log('✅ Данные отправлены');
+        img.src = SHEET_URL + '?' + params.toString();
         
         if (footerDiv) {
-            footerDiv.innerHTML = '✅ Данные сохранены';
+            footerDiv.innerHTML = '✅ Данные отправлены';
             footerDiv.style.color = '#4caf50';
         }
         
@@ -282,7 +259,6 @@ async function logToSheet(data) {
             footerDiv.innerHTML = '⚠️ Ошибка сохранения';
             footerDiv.style.color = '#f44336';
         }
-        return { success: false, error: error.message };
     }
 }
 
@@ -331,33 +307,32 @@ async function analyze() {
         
         const confidence = (sentiment.score * 100).toFixed(1);
         
-        // Показываем результат анализа
+        // Показываем результат
         showResult(`
             <i class="fas ${icon}" style="font-size: 24px; margin-right: 10px;"></i>
             <strong>${text}</strong> (${confidence}% confidence)
         `, type);
         
-        // ПРИНИМАЕМ БИЗНЕС-РЕШЕНИЕ
+        // Принимаем решение
         const decision = determineBusinessAction(sentiment.score, sentiment.label);
-        console.log('✅ Принято решение:', decision.actionCode);
+        console.log('✅ Решение:', decision.actionCode);
         
-        // ПОКАЗЫВАЕМ ДЕЙСТВИЕ НА САЙТЕ
+        // Показываем действие
         showAction(decision);
         
-        updateStatus('Анализ завершён, решение принято');
+        updateStatus('Анализ завершён');
         
         // Логируем
         const meta = {
-            userAgent: navigator.userAgent,
+            userAgent: navigator.userAgent.substring(0, 50),
             language: navigator.language,
             screen: `${window.screen.width}x${window.screen.height}`,
-            url: window.location.href,
-            timestamp: new Date().toISOString()
+            url: window.location.href
         };
         
         await logToSheet({
             timestamp: new Date().toISOString(),
-            review: review.substring(0, 500),
+            review: review.substring(0, 200),
             sentiment: text,
             confidence: confidence,
             action_taken: decision.actionCode,
@@ -365,8 +340,8 @@ async function analyze() {
         });
         
     } catch (error) {
-        console.error('Ошибка анализа:', error);
-        showError('Ошибка при анализе: ' + error.message);
+        console.error('Ошибка:', error);
+        showError('Ошибка при анализе');
         updateStatus('Ошибка');
         
     } finally {
@@ -379,12 +354,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Запуск приложения');
     updateStatus('Инициализация...');
     
-    await Promise.all([
-        loadReviews(),
-        loadModel()
-    ]);
+    // Загружаем всё
+    await loadReviews();
+    await loadModel();
     
-    analyzeBtn.addEventListener('click', analyze);
+    // Вешаем обработчик
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', analyze);
+    }
     
     updateStatus('Готово! Нажмите кнопку для анализа');
     if (footerDiv) footerDiv.innerHTML = '📊 Бизнес-логика активна';

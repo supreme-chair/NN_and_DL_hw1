@@ -1,5 +1,5 @@
 // Используем другой CDN или версию без QUIC проблем
-import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js";
+import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@2.17.1/dist/transformers.min.js";
 // Или альтернативный вариант:
 // import { pipeline } from "https://unpkg.com/@huggingface/transformers@3.0.2/dist/transformers.min.js";
 

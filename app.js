@@ -28,7 +28,7 @@ let isModelReady = false;
 let isDataLoaded = false;
 
 // URL для логирования
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzGke3cRoZ_naSn_s-LibMNvzuKsKWYV90HAtsP5-E8xWwlfAYd9JMauFlsUhW_a6Dl/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwwPrwQqFIwxTjYATDJya3DlSkU27gKwfRDgy-O_Fbx4RSW0rN_c0aadbbaKekcu5fbOg/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function updateStatus(text) {

@@ -1,421 +1,249 @@
+// Подключаем Transformers.js
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js";
 
-let reviews = [];
-let sentimentPipeline = null;
+// ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ =====
+const reviewBox = document.getElementById('reviewBox');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resultDiv = document.getElementById('result');
+const statusDiv = document.getElementById('status');
+const errorDiv = document.getElementById('error');
+const footerDiv = document.getElementById('footer');
 
-// DOM elements - ИСПРАВЛЕНО: используем правильные ID из HTML
-const analyzeBtn = document.getElementById("analyzeBtn");
-const reviewDisplay = document.getElementById("reviewDisplay"); // было reviewBox, теперь reviewDisplay
-const resultContainer = document.getElementById("resultContainer"); // было resultEl, теперь resultContainer
-const statusText = document.getElementById("statusText"); // было statusEl, теперь statusText
-const errorContainer = document.getElementById("errorContainer"); // было errorEl, теперь errorContainer
-const errorText = document.getElementById("errorText");
-const sentimentIcon = document.getElementById("sentimentIcon");
-const sentimentLabel = document.getElementById("sentimentLabel");
-const confidenceScore = document.getElementById("confidenceScore");
-const loggingStatus = document.getElementById("loggingStatus");
+// ===== ПЕРЕМЕННЫЕ =====
+let reviews = [];           // массив отзывов
+let model = null;           // модель анализа
+let isModelReady = false;   // флаг готовности модели
+let isDataLoaded = false;   // флаг загрузки данных
 
-// Проверяем, что все элементы найдены
-console.log("DOM Elements loaded:", {
-  analyzeBtn: !!analyzeBtn,
-  reviewDisplay: !!reviewDisplay,
-  resultContainer: !!resultContainer,
-  statusText: !!statusText,
-  errorContainer: !!errorContainer,
-  errorText: !!errorText,
-  sentimentIcon: !!sentimentIcon,
-  sentimentLabel: !!sentimentLabel,
-  confidenceScore: !!confidenceScore,
-  loggingStatus: !!loggingStatus
-});
+// URL для логирования
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzBkegL2WcBtQpgDzqCfxmdA4So9cBQxOscNVd_iSLyNj-zEo2lEH_l7MnXPnhhFYiGJw/exec';
 
-// Google Apps Script URL для логирования
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBkegL2WcBtQpgDzqCfxmdA4So9cBQxOscNVd_iSLyNj-zEo2lEH_l7MnXPnhhFYiGJw/exec";
-
-// Функция безопасного обновления статуса
-function setStatus(message) {
-  console.log("Status:", message);
-  if (statusText) {
-    statusText.textContent = message;
-  }
+// ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+function updateStatus(text) {
+    console.log('📌', text);
+    statusDiv.textContent = text;
 }
 
-// Функция безопасного показа ошибки
-function showError(message) {
-  console.error("Error:", message);
-  if (errorText) {
-    errorText.textContent = message;
-  }
-  if (errorContainer) {
-    errorContainer.classList.add('visible');
-  }
+function showError(text) {
+    console.error('❌', text);
+    errorDiv.textContent = text;
+    errorDiv.style.display = 'block';
 }
 
-// Функция очистки ошибки
-function clearError() {
-  if (errorText) {
-    errorText.textContent = "";
-  }
-  if (errorContainer) {
-    errorContainer.classList.remove('visible');
-  }
+function hideError() {
+    errorDiv.style.display = 'none';
 }
 
-// Функция обновления статуса логирования
-function setLoggingStatus(message, isError = false) {
-  if (loggingStatus) {
-    loggingStatus.textContent = message;
-    loggingStatus.style.color = isError ? '#f44336' : '#4b6cb7';
-  }
+function showResult(text, type) {
+    resultDiv.className = `result ${type}`;
+    resultDiv.innerHTML = text;
+    resultDiv.style.display = 'block';
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  console.log("DOM loaded, starting initialization...");
-  clearError();
-  setStatus("Initializing application... (0/3 steps)");
-  setLoggingStatus("Preparing...");
-
-  try {
-    // Шаг 1: Проверяем наличие PapaParse
-    if (typeof Papa === 'undefined') {
-      throw new Error("PapaParse library not loaded. Check CDN in index.html");
-    }
-    console.log("✓ PapaParse loaded");
-    setStatus("PapaParse loaded. Loading reviews... (1/3 steps)");
-    
-    // Шаг 2: Загружаем отзывы
-    await loadReviews();
-    console.log(`✓ Loaded ${reviews.length} reviews`);
-    setStatus(`Loaded ${reviews.length} reviews. Loading sentiment model... (2/3 steps)`);
-    
-    // Шаг 3: Загружаем модель
-    await initModel();
-    console.log("✓ Sentiment model ready");
-    setStatus(`Model ready! Loaded ${reviews.length} reviews. Click 'Analyze Random Review' to start. (3/3 steps)`);
-    
-    // Активируем кнопку
-    if (analyzeBtn) {
-      analyzeBtn.disabled = false;
-    }
-    
-    setLoggingStatus("Ready to log data to Google Sheets");
-    
-  } catch (err) {
-    console.error("Initialization error:", err);
-    showError(`Initialization failed: ${err.message}. Check console (F12) for details.`);
-    setLoggingStatus("Initialization failed", true);
-  }
-
-  if (analyzeBtn) {
-    analyzeBtn.addEventListener("click", onAnalyzeClick);
-  } else {
-    console.error("Analyze button not found");
-    showError("Critical error: Analyze button not found");
-  }
-});
-
-/**
- * Fetches and parses the TSV file containing reviews.
- */
+// ===== ЗАГРУЗКА ДАННЫХ =====
 async function loadReviews() {
-  try {
-    console.log("Attempting to fetch reviews_test.tsv...");
-    const response = await fetch("reviews_test.tsv");
-    console.log("Fetch response status:", response.status);
+    updateStatus('Загрузка отзывов...');
     
-    if (!response.ok) {
-      throw new Error(`Failed to load TSV file (status ${response.status})`);
-    }
-
-    const tsvText = await response.text();
-    console.log(`TSV file loaded, size: ${tsvText.length} bytes`);
-
-    return new Promise((resolve, reject) => {
-      console.log("Starting PapaParse parsing...");
-      Papa.parse(tsvText, {
-        header: true,
-        delimiter: "\t",
-        skipEmptyLines: true,
-        complete: (results) => {
-          console.log("PapaParse complete");
-          try {
-            if (!results.data || !Array.isArray(results.data)) {
-              throw new Error("Parsed data is invalid.");
-            }
-            
-            console.log(`Parsed ${results.data.length} rows from TSV`);
-            console.log("Columns found:", results.meta.fields);
-
-            reviews = results.data
-              .map((row) => {
-                if (typeof row.text === "string") {
-                  return row.text.trim();
-                }
-                const firstKey = Object.keys(row)[0];
-                return typeof row[firstKey] === "string" ? row[firstKey].trim() : null;
-              })
-              .filter((text) => typeof text === "string" && text.length > 0);
-
-            console.log(`Extracted ${reviews.length} valid reviews`);
-
-            if (reviews.length === 0) {
-              throw new Error("No valid review texts found in TSV. Check file format.");
-            }
-
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        },
-        error: (err) => {
-          console.error("PapaParse error:", err);
-          reject(new Error(`TSV parsing error: ${err.message}`));
-        },
-      });
-    });
-  } catch (error) {
-    console.error("Error loading reviews:", error);
-    
-    // Если файл не найден, используем тестовые данные
-    console.log("Using sample reviews as fallback");
-    reviews = [
-      "This product is amazing! I love it so much. Best purchase ever!",
-      "Terrible quality. Broke after just 2 days of use. Very disappointed.",
-      "It's okay, nothing special but gets the job done.",
-      "Absolutely fantastic! Exceeded all my expectations.",
-      "Waste of money. Don't buy this product.",
-      "Good value for the price. Would recommend to others.",
-      "The worst product I've ever bought. Save your money!",
-      "Excellent quality and fast delivery. Very satisfied!",
-      "Mediocre at best. There are better options available.",
-      "Love it! Works perfectly and looks great."
-    ];
-    console.log(`Using ${reviews.length} sample reviews`);
-    showError("Note: Using sample reviews (reviews_test.tsv not found)");
-  }
-}
-
-/**
- * Initializes the Transformers.js sentiment analysis pipeline.
- */
-async function initModel() {
-  try {
-    console.log("Initializing sentiment model...");
-    console.log("This may take a moment (downloading model if not cached)");
-    
-    sentimentPipeline = await pipeline(
-      "text-classification",
-      "Xenova/distilbert-base-uncased-finetuned-sst-2-english",
-      { 
-        quantized: true,
-        progress_callback: (progress) => {
-          if (progress.status === 'progress') {
-            console.log(`Model download progress: ${progress.progress}%`);
-          }
+    try {
+        // Пробуем загрузить файл
+        const response = await fetch('reviews_test.tsv');
+        
+        if (!response.ok) {
+            throw new Error('Файл не найден, используем тестовые данные');
         }
-      }
-    );
+        
+        const text = await response.text();
+        
+        // Парсим TSV
+        const result = Papa.parse(text, {
+            header: true,
+            delimiter: '\t',
+            skipEmptyLines: true
+        });
+        
+        // Извлекаем отзывы
+        reviews = result.data
+            .map(row => row.text || Object.values(row)[0])
+            .filter(text => text && text.length > 10);
+        
+        if (reviews.length === 0) {
+            throw new Error('Нет отзывов в файле');
+        }
+        
+        updateStatus(`Загружено ${reviews.length} отзывов`);
+        
+    } catch (error) {
+        console.warn('Ошибка загрузки файла:', error);
+        
+        // Тестовые данные
+        reviews = [
+            "This product is amazing! I love it so much.",
+            "Terrible quality, broke after 2 days.",
+            "It's okay, nothing special but works.",
+            "Absolutely fantastic! Best purchase ever.",
+            "Waste of money. Don't buy this."
+        ];
+        
+        showError('Используются тестовые данные (файл не найден)');
+        updateStatus(`Загружено ${reviews.length} тестовых отзывов`);
+    }
     
-    console.log("Model pipeline created successfully");
-  } catch (err) {
-    console.error("Model loading error details:", err);
-    
-    // Если модель не загрузилась, создаем имитацию для тестирования
-    console.log("Creating mock sentiment pipeline for testing");
-    sentimentPipeline = async (text) => {
-      console.log("Mock analysis for:", text);
-      const random = Math.random();
-      if (random > 0.66) {
-        return [{ label: "POSITIVE", score: 0.85 + Math.random() * 0.14 }];
-      } else if (random > 0.33) {
-        return [{ label: "NEGATIVE", score: 0.75 + Math.random() * 0.2 }];
-      } else {
-        return [{ label: "NEUTRAL", score: 0.6 + Math.random() * 0.3 }];
-      }
-    };
-    showError("Note: Using mock sentiment model (real model failed to load)");
-  }
+    isDataLoaded = true;
 }
 
-/**
- * Логирует данные в Google Sheets
- */
-async function logToGoogleSheets(data) {
-  try {
-    console.log("Logging data to Google Sheets:", data);
-    setLoggingStatus("Sending data to Google Sheets...");
+// ===== ЗАГРУЗКА МОДЕЛИ =====
+async function loadModel() {
+    updateStatus('Загрузка модели... (может занять минуту)');
     
-    const formData = new URLSearchParams();
-    formData.append("timestamp", data.timestamp);
-    formData.append("review", data.review);
-    formData.append("sentiment", data.sentiment);
-    formData.append("confidence", data.confidence);
-    formData.append("meta", JSON.stringify(data.meta));
-    
-    const response = await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString()
-    });
-    
-    console.log("Data sent to Google Sheets");
-    setLoggingStatus("✓ Data logged successfully");
-    return { success: true };
-    
-  } catch (error) {
-    console.warn("Failed to log to Google Sheets:", error);
-    setLoggingStatus("✗ Failed to log data", true);
-    return { success: false, error: error.message };
-  }
+    try {
+        model = await pipeline(
+            'text-classification',
+            'Xenova/distilbert-base-uncased-finetuned-sst-2-english',
+            { quantized: true }
+        );
+        
+        isModelReady = true;
+        updateStatus('Модель готова! ✅');
+        
+    } catch (error) {
+        console.error('Ошибка модели:', error);
+        
+        // Создаём заглушку для тестирования
+        model = async (text) => {
+            const rand = Math.random();
+            if (rand > 0.6) return [{ label: 'POSITIVE', score: 0.9 }];
+            if (rand > 0.3) return [{ label: 'NEGATIVE', score: 0.8 }];
+            return [{ label: 'NEUTRAL', score: 0.7 }];
+        };
+        
+        isModelReady = true;
+        showError('Используется тестовая модель (без реального AI)');
+        updateStatus('Тестовая модель готова ⚠️');
+    }
 }
 
-/**
- * Собирает мета-данные о клиенте
- */
-function collectMetaData() {
-  return {
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    platform: navigator.platform,
-    screenWidth: window.screen.width,
-    screenHeight: window.screen.height,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    url: window.location.href,
-    reviewsCount: reviews.length,
-    modelReady: !!sentimentPipeline,
-    timestamp: new Date().toISOString()
-  };
+// ===== ЛОГИРОВАНИЕ =====
+async function logToSheet(data) {
+    try {
+        const formData = new URLSearchParams();
+        formData.append('timestamp', data.timestamp);
+        formData.append('review', data.review);
+        formData.append('sentiment', data.sentiment);
+        formData.append('confidence', data.confidence);
+        formData.append('meta', JSON.stringify(data.meta));
+        
+        await fetch(SHEET_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData
+        });
+        
+        footerDiv.innerHTML = '✅ Данные сохранены';
+        
+    } catch (error) {
+        console.warn('Ошибка логирования:', error);
+        footerDiv.innerHTML = '⚠️ Ошибка сохранения';
+    }
 }
 
-/**
- * Handles the analyze button click.
- */
-async function onAnalyzeClick() {
-  clearError();
-  
-  if (resultContainer) {
-    resultContainer.classList.remove('visible');
-  }
-
-  if (!reviews || reviews.length === 0) {
-    showError("No reviews are loaded. Cannot run analysis.");
-    return;
-  }
-
-  if (!sentimentPipeline) {
-    showError("Sentiment model is not ready yet.");
-    return;
-  }
-
-  const review = getRandomReview();
-  if (reviewDisplay) {
-    reviewDisplay.textContent = review;
-    reviewDisplay.classList.remove('empty');
-  }
-
-  if (analyzeBtn) {
+// ===== АНАЛИЗ =====
+async function analyze() {
+    // Проверки
+    hideError();
+    
+    if (!isDataLoaded || reviews.length === 0) {
+        showError('Нет отзывов для анализа');
+        return;
+    }
+    
+    if (!isModelReady || !model) {
+        showError('Модель ещё не готова');
+        return;
+    }
+    
+    // Блокируем кнопку
     analyzeBtn.disabled = true;
-  }
-  
-  setStatus("Analyzing sentiment…");
-
-  try {
-    const output = await sentimentPipeline(review);
-    const normalized = normalizeOutput(output);
     
-    if (resultContainer) {
-      displayResult(normalized);
+    try {
+        // Выбираем случайный отзыв
+        const randomIndex = Math.floor(Math.random() * reviews.length);
+        const review = reviews[randomIndex];
+        
+        // Показываем отзыв
+        reviewBox.textContent = review;
+        updateStatus('Анализ...');
+        
+        // Анализируем
+        const result = await model(review);
+        const sentiment = result[0];
+        
+        // Определяем тип
+        let type = 'neutral';
+        let icon = 'fa-question-circle';
+        let text = 'НЕЙТРАЛЬНО';
+        
+        if (sentiment.label === 'POSITIVE' && sentiment.score > 0.5) {
+            type = 'positive';
+            icon = 'fa-thumbs-up';
+            text = 'ПОЗИТИВНО';
+        } else if (sentiment.label === 'NEGATIVE' && sentiment.score > 0.5) {
+            type = 'negative';
+            icon = 'fa-thumbs-down';
+            text = 'НЕГАТИВНО';
+        }
+        
+        // Показываем результат
+        const confidence = (sentiment.score * 100).toFixed(1);
+        showResult(`
+            <i class="fas ${icon}" style="font-size: 24px; margin-right: 10px;"></i>
+            <strong>${text}</strong> (${confidence}% уверенности)
+        `, type);
+        
+        updateStatus('Анализ завершён');
+        
+        // Логируем
+        const meta = {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            screen: `${window.screen.width}x${window.screen.height}`,
+            url: window.location.href
+        };
+        
+        await logToSheet({
+            timestamp: new Date().toISOString(),
+            review: review.substring(0, 500),
+            sentiment: text,
+            confidence: confidence,
+            meta: meta
+        });
+        
+    } catch (error) {
+        console.error('Ошибка анализа:', error);
+        showError('Ошибка при анализе: ' + error.message);
+        updateStatus('Ошибка');
+        
+    } finally {
+        // Разблокируем кнопку
+        analyzeBtn.disabled = false;
     }
-    
-    const metaData = collectMetaData();
-    const logData = {
-      timestamp: new Date().toISOString(),
-      review: review.substring(0, 1000),
-      sentiment: normalized.label,
-      confidence: (normalized.score * 100).toFixed(1),
-      meta: metaData
-    };
-    
-    // Логируем в фоне
-    setTimeout(() => {
-      logToGoogleSheets(logData);
-    }, 100);
-    
-    setStatus("Analysis complete. Data logged.");
-    
-  } catch (err) {
-    console.error("Analysis error:", err);
-    showError(`Sentiment analysis failed: ${err.message}`);
-    setStatus("Analysis failed");
-    setLoggingStatus("Analysis failed", true);
-  } finally {
-    if (analyzeBtn) {
-      analyzeBtn.disabled = false;
-    }
-  }
 }
 
-/**
- * Selects a random review from the loaded list.
- */
-function getRandomReview() {
-  const index = Math.floor(Math.random() * reviews.length);
-  return reviews[index];
-}
-
-/**
- * Normalizes the pipeline output into a single { label, score } object.
- */
-function normalizeOutput(output) {
-  if (!Array.isArray(output) || output.length === 0) {
-    throw new Error("Invalid model output.");
-  }
-
-  const top = output[0];
-  if (typeof top.label !== "string" || typeof top.score !== "number") {
-    throw new Error("Unexpected sentiment output format.");
-  }
-
-  return {
-    label: top.label.toUpperCase(),
-    score: top.score,
-  };
-}
-
-/**
- * Maps the sentiment to positive, negative, or neutral and updates the UI.
- */
-function displayResult({ label, score }) {
-  if (!resultContainer || !sentimentIcon || !sentimentLabel || !confidenceScore) return;
-  
-  let sentimentClass = "neutral";
-  let iconClass = "fa-question-circle";
-  let displayLabel = "NEUTRAL";
-
-  if (label === "POSITIVE" && score > 0.5) {
-    sentimentClass = "positive";
-    iconClass = "fa-thumbs-up";
-    displayLabel = "POSITIVE";
-  } else if (label === "NEGATIVE" && score > 0.5) {
-    sentimentClass = "negative";
-    iconClass = "fa-thumbs-down";
-    displayLabel = "NEGATIVE";
-  }
-
-  const confidence = (score * 100).toFixed(1);
-
-  // Обновляем класс контейнера
-  resultContainer.className = `result-container visible ${sentimentClass}`;
-  
-  // Обновляем иконку
-  sentimentIcon.className = `sentiment-icon fas ${iconClass}`;
-  
-  // Обновляем лейбл
-  sentimentLabel.textContent = displayLabel;
-  
-  // Обновляем уверенность
-  confidenceScore.textContent = `${confidence}% confidence`;
-}
+// ===== ЗАПУСК =====
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('🚀 Запуск приложения');
+    updateStatus('Инициализация...');
+    
+    // Загружаем всё параллельно
+    await Promise.all([
+        loadReviews(),
+        loadModel()
+    ]);
+    
+    // Вешаем обработчик на кнопку
+    analyzeBtn.addEventListener('click', analyze);
+    
+    // Всё готово
+    updateStatus('Готово! Нажмите кнопку для анализа');
+    footerDiv.innerHTML = '📊 Логирование готово';
+});

@@ -1,19 +1,19 @@
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js";
 
-// ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ - ИСПОЛЬЗУЕМ let ВМЕСТО const =====
-let reviewBox = document.getElementById('reviewBox');
-let analyzeBtn = document.getElementById('analyzeBtn');
-let resultDiv = document.getElementById('result');
-let statusDiv = document.getElementById('status');
-let errorDiv = document.getElementById('error');
-let footerDiv = document.getElementById('footer');
+// ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ =====
+const reviewBox = document.getElementById('reviewBox');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resultDiv = document.getElementById('result');
+const statusDiv = document.getElementById('status');
+const errorDiv = document.getElementById('error');
+const footerDiv = document.getElementById('footer');
 
 // СОЗДАЕМ элемент для действий
 let actionDiv = document.getElementById('action-result');
 if (!actionDiv) {
     actionDiv = document.createElement('div');
     actionDiv.id = 'action-result';
-    actionDiv.style.marginTop = '20px';
+    actionDiv.style.margin = '20px 0';
     if (resultDiv && resultDiv.parentNode) {
         resultDiv.parentNode.insertBefore(actionDiv, resultDiv.nextSibling);
     } else {
@@ -27,8 +27,8 @@ let model = null;
 let isModelReady = false;
 let isDataLoaded = false;
 
-// URL для логирования
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwwPrwQqFIwxTjYATDJya3DlSkU27gKwfRDgy-O_Fbx4RSW0rN_c0aadbbaKekcu5fbOg/exec';
+// URL для логирования - ВАШ URL
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyvyc7AeOOywS-pbBQ99ItJ2SJ5YqKEL_epicEqQVOaSIhQqPM5duHdYPfb3zjhHKTzGQ/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function updateStatus(text) {
@@ -56,28 +56,31 @@ function showResult(text, type) {
 }
 
 /**
- * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ
+ * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ (ТОЧНО ПО ЗАДАНИЮ)
  */
 function determineBusinessAction(confidence, label) {
     console.log('🧠 Принимаем решение:', { label, confidence });
     
+    // Нормализуем оценку в шкалу от 0 (плохо) до 1 (хорошо)
     let normalizedScore = 0.5;
     
     if (label === "POSITIVE") {
-        normalizedScore = confidence;
+        normalizedScore = confidence; // 0.9 -> 0.9
     } else if (label === "NEGATIVE") {
-        normalizedScore = 1.0 - confidence;
+        normalizedScore = 1.0 - confidence; // 0.9 негатива -> 0.1
     }
     
     console.log('📊 Нормализованная оценка:', normalizedScore.toFixed(2));
     
+    // Применяем пороговые значения ИЗ ЗАДАНИЯ
     if (normalizedScore <= 0.4) {
         return {
             actionCode: "OFFER_COUPON",
             uiMessage: "🚨 Нам искренне жаль! Пожалуйста, примите купон на 50% скидку.",
             uiColor: "#ef4444",
             icon: "fa-gift",
-            buttonText: "Получить купон"
+            buttonText: "Получить купон",
+            bgColor: "#fee2e2"
         };
     } else if (normalizedScore < 0.7) {
         return {
@@ -85,7 +88,8 @@ function determineBusinessAction(confidence, label) {
             uiMessage: "📝 Спасибо! Расскажите подробнее, как мы можем улучшить сервис?",
             uiColor: "#6b7280",
             icon: "fa-comment",
-            buttonText: "Оставить отзыв"
+            buttonText: "Оставить отзыв",
+            bgColor: "#f3f4f6"
         };
     } else {
         return {
@@ -93,7 +97,8 @@ function determineBusinessAction(confidence, label) {
             uiMessage: "⭐ Рады, что вам понравилось! Порекомендуйте нас друзьям и получите бонусы.",
             uiColor: "#3b82f6",
             icon: "fa-share-alt",
-            buttonText: "Пригласить друзей"
+            buttonText: "Пригласить друзей",
+            bgColor: "#dbeafe"
         };
     }
 }
@@ -102,30 +107,28 @@ function determineBusinessAction(confidence, label) {
  * ОТОБРАЖЕНИЕ ДЕЙСТВИЯ
  */
 function showAction(decision) {
-    if (!actionDiv) {
-        console.error('actionDiv не найден');
-        return;
-    }
+    if (!actionDiv) return;
     
     console.log('🎯 Показываем действие:', decision.actionCode);
     
     actionDiv.innerHTML = `
         <div style="
-            background: ${decision.uiColor}20;
+            background: ${decision.bgColor};
             border: 2px solid ${decision.uiColor};
-            border-radius: 10px;
+            border-radius: 12px;
             padding: 20px;
             margin: 20px 0;
             text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         ">
             <i class="fas ${decision.icon}" style="
-                font-size: 36px;
+                font-size: 48px;
                 color: ${decision.uiColor};
                 margin-bottom: 10px;
             "></i>
             <p style="
-                font-size: 16px;
-                color: #333;
+                font-size: 18px;
+                color: #1f2937;
                 margin: 10px 0;
                 font-weight: 500;
             ">${decision.uiMessage}</p>
@@ -133,13 +136,15 @@ function showAction(decision) {
                 background: ${decision.uiColor};
                 color: white;
                 border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
+                padding: 12px 30px;
+                border-radius: 8px;
                 cursor: pointer;
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: 600;
                 margin-top: 10px;
-            ">
+                transition: transform 0.2s;
+            " onmouseover="this.style.transform='scale(1.05)'" 
+               onmouseout="this.style.transform='scale(1)'">
                 ${decision.buttonText}
             </button>
         </div>
@@ -180,13 +185,14 @@ async function loadReviews() {
     } catch (error) {
         console.warn('Ошибка загрузки:', error);
         
-        // Тестовые данные
         reviews = [
             "This product is amazing! I love it so much. Best purchase ever!",
             "Terrible quality, broke after 2 days. Very disappointed.",
             "It's okay, nothing special but works.",
             "Absolutely fantastic! Best purchase ever.",
-            "Waste of money. Don't buy this."
+            "Waste of money. Don't buy this.",
+            "Good value for the price, would recommend.",
+            "The worst experience I've ever had."
         ];
         
         showError('Используются тестовые данные');
@@ -213,7 +219,6 @@ async function loadModel() {
     } catch (error) {
         console.error('Ошибка модели:', error);
         
-        // Тестовая модель
         model = async (text) => {
             const rand = Math.random();
             if (rand > 0.6) return [{ label: 'POSITIVE', score: 0.95 }];
@@ -227,44 +232,27 @@ async function loadModel() {
     }
 }
 
-// ===== ЛОГИРОВАНИЕ - ИСПРАВЛЕННАЯ ВЕРСИЯ =====
+// ===== ЛОГИРОВАНИЕ =====
 async function logToSheet(data) {
     try {
         console.log('📤 Отправляем данные:', data);
         
-        // Создаем объект с данными
-        const payload = {
+        // Создаем URL с параметрами
+        const params = new URLSearchParams({
             timestamp: data.timestamp,
-            review: data.review.substring(0, 200),
+            review: data.review,
             sentiment: data.sentiment,
             confidence: data.confidence,
             action_taken: data.action_taken,
             meta: JSON.stringify(data.meta)
-        };
+        });
         
-        console.log('📦 Payload:', payload);
+        const url = SHEET_URL + '?' + params.toString();
+        console.log('📤 URL:', url);
         
-        // Пробуем отправить через fetch с JSON
-        try {
-            const response = await fetch(SHEET_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload)
-            });
-            
-            console.log('📤 Fetch отправлен');
-            
-        } catch (fetchError) {
-            console.warn('Fetch error, пробуем GET:', fetchError);
-            
-            // Если POST не работает, пробуем GET с параметрами
-            const params = new URLSearchParams(payload);
-            const img = new Image();
-            img.src = SHEET_URL + '?' + params.toString();
-        }
+        // Отправляем через Image (самый надежный способ)
+        const img = new Image();
+        img.src = url;
         
         if (footerDiv) {
             footerDiv.innerHTML = '✅ Данные отправлены';
@@ -279,6 +267,7 @@ async function logToSheet(data) {
         }
     }
 }
+
 // ===== АНАЛИЗ =====
 async function analyze() {
     hideError();
@@ -294,9 +283,7 @@ async function analyze() {
     }
     
     analyzeBtn.disabled = true;
-    
-    // Прячем предыдущее действие
-    if (actionDiv) actionDiv.style.display = 'none';
+    actionDiv.style.display = 'none';
     
     try {
         const randomIndex = Math.floor(Math.random() * reviews.length);
@@ -324,13 +311,13 @@ async function analyze() {
         
         const confidence = (sentiment.score * 100).toFixed(1);
         
-        // Показываем результат
+        // Показываем результат анализа
         showResult(`
             <i class="fas ${icon}" style="font-size: 24px; margin-right: 10px;"></i>
             <strong>${text}</strong> (${confidence}% confidence)
         `, type);
         
-        // Принимаем решение
+        // Принимаем бизнес-решение
         const decision = determineBusinessAction(sentiment.score, sentiment.label);
         console.log('✅ Решение:', decision.actionCode);
         
@@ -339,17 +326,18 @@ async function analyze() {
         
         updateStatus('Анализ завершён');
         
-        // Логируем
+        // Логируем с action_taken
         const meta = {
-            userAgent: navigator.userAgent.substring(0, 50),
+            userAgent: navigator.userAgent,
             language: navigator.language,
             screen: `${window.screen.width}x${window.screen.height}`,
-            url: window.location.href
+            url: window.location.href,
+            reviewsCount: reviews.length
         };
         
         await logToSheet({
             timestamp: new Date().toISOString(),
-            review: review.substring(0, 200),
+            review: review.substring(0, 300),
             sentiment: text,
             confidence: confidence,
             action_taken: decision.actionCode,
@@ -371,11 +359,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Запуск приложения');
     updateStatus('Инициализация...');
     
-    // Загружаем всё
     await loadReviews();
     await loadModel();
     
-    // Вешаем обработчик
     if (analyzeBtn) {
         analyzeBtn.addEventListener('click', analyze);
     }

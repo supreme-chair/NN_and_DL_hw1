@@ -1,20 +1,19 @@
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js";
 
-// ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ =====
-const reviewBox = document.getElementById('reviewBox');
-const analyzeBtn = document.getElementById('analyzeBtn');
-const resultDiv = document.getElementById('result');
-const statusDiv = document.getElementById('status');
-const errorDiv = document.getElementById('error');
-const footerDiv = document.getElementById('footer');
+// ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ - ИСПОЛЬЗУЕМ let ВМЕСТО const =====
+let reviewBox = document.getElementById('reviewBox');
+let analyzeBtn = document.getElementById('analyzeBtn');
+let resultDiv = document.getElementById('result');
+let statusDiv = document.getElementById('status');
+let errorDiv = document.getElementById('error');
+let footerDiv = document.getElementById('footer');
 
-// СОЗДАЕМ элемент для действий - ПРОСТО СОЗДАЕМ НОВЫЙ, ЕСЛИ ЕГО НЕТ
+// СОЗДАЕМ элемент для действий
 let actionDiv = document.getElementById('action-result');
 if (!actionDiv) {
     actionDiv = document.createElement('div');
     actionDiv.id = 'action-result';
     actionDiv.style.marginTop = '20px';
-    // Добавляем после результата
     if (resultDiv && resultDiv.parentNode) {
         resultDiv.parentNode.insertBefore(actionDiv, resultDiv.nextSibling);
     } else {
@@ -28,7 +27,7 @@ let model = null;
 let isModelReady = false;
 let isDataLoaded = false;
 
-// URL для логирования - исправляем формат для Google Apps Script
+// URL для логирования
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxrjX3Amx_6IybZfRbZkTjh-gSOTTSE_IG9IaHnrg__hcXa_HQQ2wKmub0pO07CCF0yFQ/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -233,7 +232,7 @@ async function logToSheet(data) {
     try {
         console.log('📤 Отправляем данные:', data);
         
-        // Простой способ отправить данные (без ожидания ответа)
+        // Используем Image для отправки (без CORS проблем)
         const img = new Image();
         const params = new URLSearchParams({
             timestamp: data.timestamp,
@@ -250,8 +249,6 @@ async function logToSheet(data) {
             footerDiv.innerHTML = '✅ Данные отправлены';
             footerDiv.style.color = '#4caf50';
         }
-        
-        return { success: true };
         
     } catch (error) {
         console.error('❌ Ошибка логирования:', error);

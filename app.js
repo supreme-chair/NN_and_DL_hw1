@@ -1,4 +1,3 @@
-// Подключаем Transformers.js
 import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js";
 
 // ===== ПОЛУЧАЕМ ЭЛЕМЕНТЫ =====
@@ -8,6 +7,7 @@ const resultDiv = document.getElementById('result');
 const statusDiv = document.getElementById('status');
 const errorDiv = document.getElementById('error');
 const footerDiv = document.getElementById('footer');
+const actionDiv = document.getElementById('action-result'); // Новый элемент для действий
 
 // ===== ПЕРЕМЕННЫЕ =====
 let reviews = [];           // массив отзывов
@@ -40,12 +40,106 @@ function showResult(text, type) {
     resultDiv.style.display = 'block';
 }
 
+/**
+ * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ НА ОСНОВЕ АНАЛИЗА
+ * Это главная новая функция - "Мозг" системы
+ */
+function determineBusinessAction(confidence, label) {
+    console.log('🧠 Принимаем решение на основе:', { label, confidence });
+    
+    // 1. Нормализуем оценку в шкалу от 0 (плохо) до 1 (хорошо)
+    let normalizedScore = 0.5; // По умолчанию нейтрально
+    
+    if (label === "POSITIVE") {
+        // Для позитивных: confidence сразу показывает насколько хорошо
+        normalizedScore = confidence; // 0.9 -> 0.9 (отлично)
+    } else if (label === "NEGATIVE") {
+        // Для негативных: инвертируем confidence
+        normalizedScore = 1.0 - confidence; // 0.9 негатива -> 0.1 (ужасно)
+    }
+    
+    console.log('📊 Нормализованная оценка:', normalizedScore.toFixed(2));
+    
+    // 2. Применяем бизнес-правила из таблицы
+    if (normalizedScore <= 0.4) {
+        // 🔴 КРИТИЧЕСКИЙ РИСК: негативный отзыв с высокой уверенностью
+        return {
+            actionCode: "OFFER_COUPON",
+            uiMessage: "🚨 Нам искренне жаль! Пожалуйста, примите купон на 50% скидку.",
+            uiColor: "#ef4444", // Красный
+            icon: "fa-gift",
+            buttonText: "Получить купон"
+        };
+    } else if (normalizedScore < 0.7) {
+        // 🟡 НЕОПРЕДЕЛЕННОСТЬ: нейтральный или неуверенный отзыв
+        return {
+            actionCode: "REQUEST_FEEDBACK",
+            uiMessage: "📝 Спасибо! Расскажите подробнее, как мы можем улучшить сервис?",
+            uiColor: "#6b7280", // Серый
+            icon: "fa-comment",
+            buttonText: "Оставить отзыв"
+        };
+    } else {
+        // 🔵 ЛОЯЛЬНЫЙ КЛИЕНТ: позитивный отзыв с высокой уверенностью
+        return {
+            actionCode: "ASK_REFERRAL",
+            uiMessage: "⭐ Рады, что вам понравилось! Порекомендуйте нас друзьям и получите бонусы.",
+            uiColor: "#3b82f6", // Синий
+            icon: "fa-share-alt",
+            buttonText: "Пригласить друзей"
+        };
+    }
+}
+
+/**
+ * ОТОБРАЖЕНИЕ БИЗНЕС-ДЕЙСТВИЯ В ИНТЕРФЕЙСЕ
+ */
+function showAction(decision) {
+    if (!actionDiv) return;
+    
+    // Создаем HTML для действия
+    actionDiv.innerHTML = `
+        <div style="
+            background: ${decision.uiColor}15;
+            border: 2px solid ${decision.uiColor};
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        ">
+            <i class="fas ${decision.icon}" style="
+                font-size: 32px;
+                color: ${decision.uiColor};
+                margin-bottom: 10px;
+            "></i>
+            <p style="
+                font-size: 18px;
+                color: ${decision.uiColor};
+                margin: 10px 0;
+                font-weight: bold;
+            ">${decision.uiMessage}</p>
+            <button style="
+                background: ${decision.uiColor};
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                margin-top: 10px;
+            " onclick="alert('${decision.actionCode}')">
+                ${decision.buttonText}
+            </button>
+        </div>
+    `;
+    actionDiv.style.display = 'block';
+}
+
 // ===== ЗАГРУЗКА ДАННЫХ =====
 async function loadReviews() {
     updateStatus('Загрузка отзывов...');
     
     try {
-        // Пробуем загрузить файл
         const response = await fetch('reviews_test.tsv');
         
         if (!response.ok) {
@@ -54,14 +148,12 @@ async function loadReviews() {
         
         const text = await response.text();
         
-        // Парсим TSV
         const result = Papa.parse(text, {
             header: true,
             delimiter: '\t',
             skipEmptyLines: true
         });
         
-        // Извлекаем отзывы
         reviews = result.data
             .map(row => row.text || Object.values(row)[0])
             .filter(text => text && text.length > 10);
@@ -75,13 +167,14 @@ async function loadReviews() {
     } catch (error) {
         console.warn('Ошибка загрузки файла:', error);
         
-        // Тестовые данные
         reviews = [
-            "This product is amazing! I love it so much.",
-            "Terrible quality, broke after 2 days.",
+            "This product is amazing! I love it so much. Best purchase ever!",
+            "Terrible quality, broke after 2 days. Very disappointed.",
             "It's okay, nothing special but works.",
             "Absolutely fantastic! Best purchase ever.",
-            "Waste of money. Don't buy this."
+            "Waste of money. Don't buy this.",
+            "Good value for the price, would recommend.",
+            "The worst experience I've ever had."
         ];
         
         showError('Используются тестовые данные (файл не найден)');
@@ -108,12 +201,11 @@ async function loadModel() {
     } catch (error) {
         console.error('Ошибка модели:', error);
         
-        // Создаём заглушку для тестирования
         model = async (text) => {
             const rand = Math.random();
-            if (rand > 0.6) return [{ label: 'POSITIVE', score: 0.9 }];
-            if (rand > 0.3) return [{ label: 'NEGATIVE', score: 0.8 }];
-            return [{ label: 'NEUTRAL', score: 0.7 }];
+            if (rand > 0.6) return [{ label: 'POSITIVE', score: 0.95 }];
+            if (rand > 0.3) return [{ label: 'NEGATIVE', score: 0.9 }];
+            return [{ label: 'NEUTRAL', score: 0.6 }];
         };
         
         isModelReady = true;
@@ -122,7 +214,7 @@ async function loadModel() {
     }
 }
 
-// ===== ЛОГИРОВАНИЕ =====
+// ===== ЛОГИРОВАНИЕ В GOOGLE SHEETS =====
 async function logToSheet(data) {
     try {
         const formData = new URLSearchParams();
@@ -130,6 +222,7 @@ async function logToSheet(data) {
         formData.append('review', data.review);
         formData.append('sentiment', data.sentiment);
         formData.append('confidence', data.confidence);
+        formData.append('action_taken', data.action_taken); // НОВАЯ КОЛОНКА
         formData.append('meta', JSON.stringify(data.meta));
         
         await fetch(SHEET_URL, {
@@ -149,7 +242,6 @@ async function logToSheet(data) {
 
 // ===== АНАЛИЗ =====
 async function analyze() {
-    // Проверки
     hideError();
     
     if (!isDataLoaded || reviews.length === 0) {
@@ -162,23 +254,22 @@ async function analyze() {
         return;
     }
     
-    // Блокируем кнопку
     analyzeBtn.disabled = true;
     
+    // Прячем предыдущее действие
+    if (actionDiv) actionDiv.style.display = 'none';
+    
     try {
-        // Выбираем случайный отзыв
         const randomIndex = Math.floor(Math.random() * reviews.length);
         const review = reviews[randomIndex];
         
-        // Показываем отзыв
         reviewBox.textContent = review;
         updateStatus('Анализ...');
         
-        // Анализируем
         const result = await model(review);
         const sentiment = result[0];
         
-        // Определяем тип
+        // Определяем тип тональности для отображения
         let type = 'neutral';
         let icon = 'fa-question-circle';
         let text = 'НЕЙТРАЛЬНО';
@@ -193,21 +284,30 @@ async function analyze() {
             text = 'НЕГАТИВНО';
         }
         
-        // Показываем результат
         const confidence = (sentiment.score * 100).toFixed(1);
+        
+        // Показываем результат анализа
         showResult(`
             <i class="fas ${icon}" style="font-size: 24px; margin-right: 10px;"></i>
             <strong>${text}</strong> (${confidence}% уверенности)
         `, type);
         
-        updateStatus('Анализ завершён');
+        // ===== НОВАЯ ЧАСТЬ: ПРИНИМАЕМ БИЗНЕС-РЕШЕНИЕ =====
+        const decision = determineBusinessAction(sentiment.score, sentiment.label);
+        console.log('✅ Принято решение:', decision.actionCode);
         
-        // Логируем
+        // Показываем действие в интерфейсе
+        showAction(decision);
+        
+        updateStatus('Анализ завершён, решение принято');
+        
+        // Логируем с новой колонкой action_taken
         const meta = {
             userAgent: navigator.userAgent,
             language: navigator.language,
             screen: `${window.screen.width}x${window.screen.height}`,
-            url: window.location.href
+            url: window.location.href,
+            normalizedScore: decision.normalizedScore
         };
         
         await logToSheet({
@@ -215,6 +315,7 @@ async function analyze() {
             review: review.substring(0, 500),
             sentiment: text,
             confidence: confidence,
+            action_taken: decision.actionCode, // НОВАЯ КОЛОНКА
             meta: meta
         });
         
@@ -224,7 +325,6 @@ async function analyze() {
         updateStatus('Ошибка');
         
     } finally {
-        // Разблокируем кнопку
         analyzeBtn.disabled = false;
     }
 }
@@ -234,16 +334,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Запуск приложения');
     updateStatus('Инициализация...');
     
-    // Загружаем всё параллельно
+    // Добавляем контейнер для действий, если его нет
+    if (!document.getElementById('action-result')) {
+        const main = document.querySelector('.container') || document.body;
+        const newActionDiv = document.createElement('div');
+        newActionDiv.id = 'action-result';
+        newActionDiv.style.display = 'none';
+        main.appendChild(newActionDiv);
+        // Переопределяем переменную
+        actionDiv = newActionDiv;
+    }
+    
     await Promise.all([
         loadReviews(),
         loadModel()
     ]);
     
-    // Вешаем обработчик на кнопку
     analyzeBtn.addEventListener('click', analyze);
     
-    // Всё готово
     updateStatus('Готово! Нажмите кнопку для анализа');
-    footerDiv.innerHTML = '📊 Логирование готово';
+    footerDiv.innerHTML = '📊 Бизнес-логика активна';
 });

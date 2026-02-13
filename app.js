@@ -7,132 +7,162 @@ const resultDiv = document.getElementById('result');
 const statusDiv = document.getElementById('status');
 const errorDiv = document.getElementById('error');
 const footerDiv = document.getElementById('footer');
-const actionDiv = document.getElementById('action-result'); // Новый элемент для действий
+
+// СОЗДАЕМ элемент для действий, если его нет
+let actionDiv = document.getElementById('action-result');
+if (!actionDiv) {
+    actionDiv = document.createElement('div');
+    actionDiv.id = 'action-result';
+    actionDiv.style.marginTop = '20px';
+    document.querySelector('.container').appendChild(actionDiv);
+}
 
 // ===== ПЕРЕМЕННЫЕ =====
-let reviews = [];           // массив отзывов
-let model = null;           // модель анализа
-let isModelReady = false;   // флаг готовности модели
-let isDataLoaded = false;   // флаг загрузки данных
+let reviews = [];
+let model = null;
+let isModelReady = false;
+let isDataLoaded = false;
 
-// URL для логирования
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzBkegL2WcBtQpgDzqCfxmdA4So9cBQxOscNVd_iSLyNj-zEo2lEH_l7MnXPnhhFYiGJw/exec';
+// URL для логирования - ИСПРАВЛЕНО на ваш новый URL
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxrjX3Amx_6IybZfRbZkTjh-gSOTTSE_IG9IaHnrg__hcXa_HQQ2wKmub0pO07CCF0yFQ/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function updateStatus(text) {
     console.log('📌', text);
-    statusDiv.textContent = text;
+    if (statusDiv) statusDiv.textContent = text;
 }
 
 function showError(text) {
     console.error('❌', text);
-    errorDiv.textContent = text;
-    errorDiv.style.display = 'block';
+    if (errorDiv) {
+        errorDiv.textContent = text;
+        errorDiv.style.display = 'block';
+    }
 }
 
 function hideError() {
-    errorDiv.style.display = 'none';
+    if (errorDiv) errorDiv.style.display = 'none';
 }
 
 function showResult(text, type) {
+    if (!resultDiv) return;
     resultDiv.className = `result ${type}`;
     resultDiv.innerHTML = text;
     resultDiv.style.display = 'block';
 }
 
 /**
- * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ НА ОСНОВЕ АНАЛИЗА
- * Это главная новая функция - "Мозг" системы
+ * ОПРЕДЕЛЕНИЕ БИЗНЕС-ДЕЙСТВИЯ
  */
 function determineBusinessAction(confidence, label) {
     console.log('🧠 Принимаем решение на основе:', { label, confidence });
     
-    // 1. Нормализуем оценку в шкалу от 0 (плохо) до 1 (хорошо)
-    let normalizedScore = 0.5; // По умолчанию нейтрально
+    let normalizedScore = 0.5;
     
     if (label === "POSITIVE") {
-        // Для позитивных: confidence сразу показывает насколько хорошо
-        normalizedScore = confidence; // 0.9 -> 0.9 (отлично)
+        normalizedScore = confidence;
     } else if (label === "NEGATIVE") {
-        // Для негативных: инвертируем confidence
-        normalizedScore = 1.0 - confidence; // 0.9 негатива -> 0.1 (ужасно)
+        normalizedScore = 1.0 - confidence;
     }
     
     console.log('📊 Нормализованная оценка:', normalizedScore.toFixed(2));
     
-    // 2. Применяем бизнес-правила из таблицы
     if (normalizedScore <= 0.4) {
-        // 🔴 КРИТИЧЕСКИЙ РИСК: негативный отзыв с высокой уверенностью
         return {
             actionCode: "OFFER_COUPON",
             uiMessage: "🚨 Нам искренне жаль! Пожалуйста, примите купон на 50% скидку.",
-            uiColor: "#ef4444", // Красный
+            uiColor: "#ef4444",
             icon: "fa-gift",
-            buttonText: "Получить купон"
+            buttonText: "Получить купон",
+            bgColor: "#fee2e2"
         };
     } else if (normalizedScore < 0.7) {
-        // 🟡 НЕОПРЕДЕЛЕННОСТЬ: нейтральный или неуверенный отзыв
         return {
             actionCode: "REQUEST_FEEDBACK",
             uiMessage: "📝 Спасибо! Расскажите подробнее, как мы можем улучшить сервис?",
-            uiColor: "#6b7280", // Серый
+            uiColor: "#6b7280",
             icon: "fa-comment",
-            buttonText: "Оставить отзыв"
+            buttonText: "Оставить отзыв",
+            bgColor: "#f3f4f6"
         };
     } else {
-        // 🔵 ЛОЯЛЬНЫЙ КЛИЕНТ: позитивный отзыв с высокой уверенностью
         return {
             actionCode: "ASK_REFERRAL",
             uiMessage: "⭐ Рады, что вам понравилось! Порекомендуйте нас друзьям и получите бонусы.",
-            uiColor: "#3b82f6", // Синий
+            uiColor: "#3b82f6",
             icon: "fa-share-alt",
-            buttonText: "Пригласить друзей"
+            buttonText: "Пригласить друзей",
+            bgColor: "#dbeafe"
         };
     }
 }
 
 /**
- * ОТОБРАЖЕНИЕ БИЗНЕС-ДЕЙСТВИЯ В ИНТЕРФЕЙСЕ
+ * ОТОБРАЖЕНИЕ ДЕЙСТВИЯ
  */
 function showAction(decision) {
-    if (!actionDiv) return;
+    if (!actionDiv) {
+        console.error('actionDiv не найден');
+        return;
+    }
     
-    // Создаем HTML для действия
-    actionDiv.innerHTML = `
+    console.log('🎯 Показываем действие:', decision);
+    
+    const actionHtml = `
         <div style="
-            background: ${decision.uiColor}15;
+            background: ${decision.bgColor};
             border: 2px solid ${decision.uiColor};
-            border-radius: 10px;
-            padding: 20px;
-            margin-top: 20px;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
             text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            animation: fadeIn 0.5s ease;
         ">
             <i class="fas ${decision.icon}" style="
-                font-size: 32px;
+                font-size: 48px;
                 color: ${decision.uiColor};
-                margin-bottom: 10px;
+                margin-bottom: 15px;
+                display: block;
             "></i>
             <p style="
                 font-size: 18px;
-                color: ${decision.uiColor};
-                margin: 10px 0;
-                font-weight: bold;
+                color: #1f2937;
+                margin: 15px 0;
+                line-height: 1.5;
+                font-weight: 500;
             ">${decision.uiMessage}</p>
-            <button style="
+            <button onclick="alert('✅ ${decision.actionCode}')" style="
                 background: ${decision.uiColor};
                 color: white;
                 border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
+                padding: 12px 30px;
+                border-radius: 8px;
                 cursor: pointer;
                 font-size: 16px;
+                font-weight: 600;
                 margin-top: 10px;
-            " onclick="alert('${decision.actionCode}')">
+                transition: transform 0.2s;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            " onmouseover="this.style.transform='scale(1.05)'" 
+               onmouseout="this.style.transform='scale(1)'">
                 ${decision.buttonText}
             </button>
         </div>
     `;
+    
+    actionDiv.innerHTML = actionHtml;
     actionDiv.style.display = 'block';
+    
+    // Добавляем анимацию
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    `;
+    document.head.appendChild(style);
 }
 
 // ===== ЗАГРУЗКА ДАННЫХ =====
@@ -143,7 +173,7 @@ async function loadReviews() {
         const response = await fetch('reviews_test.tsv');
         
         if (!response.ok) {
-            throw new Error('Файл не найден, используем тестовые данные');
+            throw new Error('Файл не найден');
         }
         
         const text = await response.text();
@@ -159,13 +189,13 @@ async function loadReviews() {
             .filter(text => text && text.length > 10);
         
         if (reviews.length === 0) {
-            throw new Error('Нет отзывов в файле');
+            throw new Error('Нет отзывов');
         }
         
         updateStatus(`Загружено ${reviews.length} отзывов`);
         
     } catch (error) {
-        console.warn('Ошибка загрузки файла:', error);
+        console.warn('Ошибка загрузки:', error);
         
         reviews = [
             "This product is amazing! I love it so much. Best purchase ever!",
@@ -177,7 +207,7 @@ async function loadReviews() {
             "The worst experience I've ever had."
         ];
         
-        showError('Используются тестовые данные (файл не найден)');
+        showError('Используются тестовые данные');
         updateStatus(`Загружено ${reviews.length} тестовых отзывов`);
     }
     
@@ -209,34 +239,68 @@ async function loadModel() {
         };
         
         isModelReady = true;
-        showError('Используется тестовая модель (без реального AI)');
+        showError('Используется тестовая модель');
         updateStatus('Тестовая модель готова ⚠️');
     }
 }
 
-// ===== ЛОГИРОВАНИЕ В GOOGLE SHEETS =====
+// ===== ЛОГИРОВАНИЕ =====
 async function logToSheet(data) {
     try {
-        const formData = new URLSearchParams();
-        formData.append('timestamp', data.timestamp);
-        formData.append('review', data.review);
-        formData.append('sentiment', data.sentiment);
-        formData.append('confidence', data.confidence);
-        formData.append('action_taken', data.action_taken); // НОВАЯ КОЛОНКА
-        formData.append('meta', JSON.stringify(data.meta));
+        console.log('📤 Отправляем в Google Sheets:', data);
         
-        await fetch(SHEET_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: formData
+        // Используем JSONP подход для обхода CORS
+        const callbackName = 'jsonp_callback_' + Date.now();
+        
+        return new Promise((resolve, reject) => {
+            // Создаем скрипт для JSONP
+            const script = document.createElement('script');
+            const params = new URLSearchParams({
+                timestamp: data.timestamp,
+                review: data.review,
+                sentiment: data.sentiment,
+                confidence: data.confidence,
+                action_taken: data.action_taken,
+                meta: JSON.stringify(data.meta),
+                callback: callbackName
+            });
+            
+            // Определяем callback функцию глобально
+            window[callbackName] = function(response) {
+                console.log('✅ Ответ от сервера:', response);
+                delete window[callbackName];
+                document.body.removeChild(script);
+                
+                if (footerDiv) {
+                    footerDiv.innerHTML = '✅ Данные сохранены';
+                    footerDiv.style.color = '#4caf50';
+                }
+                resolve(response);
+            };
+            
+            // Добавляем скрипт на страницу
+            script.src = SHEET_URL + '?' + params.toString();
+            script.onerror = (error) => {
+                console.error('❌ Ошибка отправки:', error);
+                delete window[callbackName];
+                document.body.removeChild(script);
+                
+                if (footerDiv) {
+                    footerDiv.innerHTML = '⚠️ Ошибка сохранения';
+                    footerDiv.style.color = '#f44336';
+                }
+                reject(error);
+            };
+            
+            document.body.appendChild(script);
         });
         
-        footerDiv.innerHTML = '✅ Данные сохранены';
-        
     } catch (error) {
-        console.warn('Ошибка логирования:', error);
-        footerDiv.innerHTML = '⚠️ Ошибка сохранения';
+        console.error('❌ Ошибка логирования:', error);
+        if (footerDiv) {
+            footerDiv.innerHTML = '⚠️ Ошибка сохранения';
+            footerDiv.style.color = '#f44336';
+        }
     }
 }
 
@@ -269,19 +333,18 @@ async function analyze() {
         const result = await model(review);
         const sentiment = result[0];
         
-        // Определяем тип тональности для отображения
         let type = 'neutral';
         let icon = 'fa-question-circle';
-        let text = 'НЕЙТРАЛЬНО';
+        let text = 'NEUTRAL';
         
         if (sentiment.label === 'POSITIVE' && sentiment.score > 0.5) {
             type = 'positive';
             icon = 'fa-thumbs-up';
-            text = 'ПОЗИТИВНО';
+            text = 'POSITIVE';
         } else if (sentiment.label === 'NEGATIVE' && sentiment.score > 0.5) {
             type = 'negative';
             icon = 'fa-thumbs-down';
-            text = 'НЕГАТИВНО';
+            text = 'NEGATIVE';
         }
         
         const confidence = (sentiment.score * 100).toFixed(1);
@@ -289,25 +352,25 @@ async function analyze() {
         // Показываем результат анализа
         showResult(`
             <i class="fas ${icon}" style="font-size: 24px; margin-right: 10px;"></i>
-            <strong>${text}</strong> (${confidence}% уверенности)
+            <strong>${text}</strong> (${confidence}% confidence)
         `, type);
         
-        // ===== НОВАЯ ЧАСТЬ: ПРИНИМАЕМ БИЗНЕС-РЕШЕНИЕ =====
+        // ПРИНИМАЕМ БИЗНЕС-РЕШЕНИЕ
         const decision = determineBusinessAction(sentiment.score, sentiment.label);
         console.log('✅ Принято решение:', decision.actionCode);
         
-        // Показываем действие в интерфейсе
+        // ПОКАЗЫВАЕМ ДЕЙСТВИЕ НА САЙТЕ
         showAction(decision);
         
         updateStatus('Анализ завершён, решение принято');
         
-        // Логируем с новой колонкой action_taken
+        // Логируем
         const meta = {
             userAgent: navigator.userAgent,
             language: navigator.language,
             screen: `${window.screen.width}x${window.screen.height}`,
             url: window.location.href,
-            normalizedScore: decision.normalizedScore
+            timestamp: new Date().toISOString()
         };
         
         await logToSheet({
@@ -315,7 +378,7 @@ async function analyze() {
             review: review.substring(0, 500),
             sentiment: text,
             confidence: confidence,
-            action_taken: decision.actionCode, // НОВАЯ КОЛОНКА
+            action_taken: decision.actionCode,
             meta: meta
         });
         
@@ -334,17 +397,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Запуск приложения');
     updateStatus('Инициализация...');
     
-    // Добавляем контейнер для действий, если его нет
-    if (!document.getElementById('action-result')) {
-        const main = document.querySelector('.container') || document.body;
-        const newActionDiv = document.createElement('div');
-        newActionDiv.id = 'action-result';
-        newActionDiv.style.display = 'none';
-        main.appendChild(newActionDiv);
-        // Переопределяем переменную
-        actionDiv = newActionDiv;
-    }
-    
     await Promise.all([
         loadReviews(),
         loadModel()
@@ -353,5 +405,5 @@ document.addEventListener('DOMContentLoaded', async () => {
     analyzeBtn.addEventListener('click', analyze);
     
     updateStatus('Готово! Нажмите кнопку для анализа');
-    footerDiv.innerHTML = '📊 Бизнес-логика активна';
+    if (footerDiv) footerDiv.innerHTML = '📊 Бизнес-логика активна';
 });

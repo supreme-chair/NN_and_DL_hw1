@@ -3,72 +3,77 @@ import { pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers
 let reviews = [];
 let sentimentPipeline = null;
 
-// DOM elements с проверкой существования
+// DOM elements - ИСПРАВЛЕНО: используем правильные ID из HTML
 const analyzeBtn = document.getElementById("analyzeBtn");
-const reviewBox = document.getElementById("reviewBox");
-const resultEl = document.getElementById("result");
-const statusEl = document.getElementById("status");
-const errorEl = document.getElementById("error");
+const reviewDisplay = document.getElementById("reviewDisplay"); // было reviewBox, теперь reviewDisplay
+const resultContainer = document.getElementById("resultContainer"); // было resultEl, теперь resultContainer
+const statusText = document.getElementById("statusText"); // было statusEl, теперь statusText
+const errorContainer = document.getElementById("errorContainer"); // было errorEl, теперь errorContainer
+const errorText = document.getElementById("errorText");
+const sentimentIcon = document.getElementById("sentimentIcon");
+const sentimentLabel = document.getElementById("sentimentLabel");
+const confidenceScore = document.getElementById("confidenceScore");
+const loggingStatus = document.getElementById("loggingStatus");
 
 // Проверяем, что все элементы найдены
-if (!analyzeBtn || !reviewBox || !resultEl || !statusEl || !errorEl) {
-  console.error("Critical error: Some DOM elements are missing!");
-  console.log("Missing elements:", {
-    analyzeBtn: !!analyzeBtn,
-    reviewBox: !!reviewBox,
-    resultEl: !!resultEl,
-    statusEl: !!statusEl,
-    errorEl: !!errorEl
-  });
-  
-  // Создаем заглушки для отсутствующих элементов
-  if (!statusEl) {
-    // Если нет статуса, создаем временный
-    const tempStatus = document.createElement('div');
-    tempStatus.id = 'status';
-    tempStatus.style.display = 'none';
-    document.body.appendChild(tempStatus);
-    statusEl = tempStatus;
-  }
-}
+console.log("DOM Elements loaded:", {
+  analyzeBtn: !!analyzeBtn,
+  reviewDisplay: !!reviewDisplay,
+  resultContainer: !!resultContainer,
+  statusText: !!statusText,
+  errorContainer: !!errorContainer,
+  errorText: !!errorText,
+  sentimentIcon: !!sentimentIcon,
+  sentimentLabel: !!sentimentLabel,
+  confidenceScore: !!confidenceScore,
+  loggingStatus: !!loggingStatus
+});
 
 // Google Apps Script URL для логирования
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzBkegL2WcBtQpgDzqCfxmdA4So9cBQxOscNVd_iSLyNj-zEo2lEH_l7MnXPnhhFYiGJw/exec";
 
 // Функция безопасного обновления статуса
-function safeSetStatus(message) {
+function setStatus(message) {
   console.log("Status:", message);
-  if (statusEl) {
-    statusEl.textContent = message;
-  } else {
-    console.log("Status (no element):", message);
-  }
-}
-
-// Функция безопасной очистки ошибки
-function safeClearError() {
-  console.log("Clearing errors");
-  if (errorEl) {
-    errorEl.textContent = "";
-    errorEl.style.display = "none";
+  if (statusText) {
+    statusText.textContent = message;
   }
 }
 
 // Функция безопасного показа ошибки
-function safeShowError(message) {
+function showError(message) {
   console.error("Error:", message);
-  if (errorEl) {
-    errorEl.textContent = message;
-    errorEl.style.display = "block";
-  } else {
-    alert("Error: " + message); // Fallback если нет элемента ошибки
+  if (errorText) {
+    errorText.textContent = message;
+  }
+  if (errorContainer) {
+    errorContainer.classList.add('visible');
+  }
+}
+
+// Функция очистки ошибки
+function clearError() {
+  if (errorText) {
+    errorText.textContent = "";
+  }
+  if (errorContainer) {
+    errorContainer.classList.remove('visible');
+  }
+}
+
+// Функция обновления статуса логирования
+function setLoggingStatus(message, isError = false) {
+  if (loggingStatus) {
+    loggingStatus.textContent = message;
+    loggingStatus.style.color = isError ? '#f44336' : '#4b6cb7';
   }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("DOM loaded, starting initialization...");
-  safeClearError();
-  safeSetStatus("Initializing application... (0/3 steps)");
+  clearError();
+  setStatus("Initializing application... (0/3 steps)");
+  setLoggingStatus("Preparing...");
 
   try {
     // Шаг 1: Проверяем наличие PapaParse
@@ -76,46 +81,36 @@ document.addEventListener("DOMContentLoaded", async () => {
       throw new Error("PapaParse library not loaded. Check CDN in index.html");
     }
     console.log("✓ PapaParse loaded");
-    safeSetStatus("PapaParse loaded. Loading reviews... (1/3 steps)");
+    setStatus("PapaParse loaded. Loading reviews... (1/3 steps)");
     
     // Шаг 2: Загружаем отзывы
     await loadReviews();
     console.log(`✓ Loaded ${reviews.length} reviews`);
-    safeSetStatus(`Loaded ${reviews.length} reviews. Loading sentiment model... (2/3 steps)`);
+    setStatus(`Loaded ${reviews.length} reviews. Loading sentiment model... (2/3 steps)`);
     
     // Шаг 3: Загружаем модель
     await initModel();
     console.log("✓ Sentiment model ready");
-    safeSetStatus(`Model ready! Loaded ${reviews.length} reviews. Click 'Analyze Random Review' to start. (3/3 steps)`);
+    setStatus(`Model ready! Loaded ${reviews.length} reviews. Click 'Analyze Random Review' to start. (3/3 steps)`);
     
     // Активируем кнопку
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
     }
     
+    setLoggingStatus("Ready to log data to Google Sheets");
+    
   } catch (err) {
     console.error("Initialization error:", err);
-    safeShowError(`Initialization failed: ${err.message}. Check console (F12) for details.`);
-    
-    // Показываем детальную информацию об ошибке в консоли
-    console.log("Debug info:", {
-      papaParseAvailable: typeof Papa !== 'undefined',
-      reviewsLoaded: reviews.length,
-      modelLoaded: !!sentimentPipeline,
-      domElements: {
-        analyzeBtn: !!analyzeBtn,
-        reviewBox: !!reviewBox,
-        resultEl: !!resultEl,
-        statusEl: !!statusEl,
-        errorEl: !!errorEl
-      }
-    });
+    showError(`Initialization failed: ${err.message}. Check console (F12) for details.`);
+    setLoggingStatus("Initialization failed", true);
   }
 
   if (analyzeBtn) {
     analyzeBtn.addEventListener("click", onAnalyzeClick);
   } else {
-    console.error("Analyze button not found - functionality will be limited");
+    console.error("Analyze button not found");
+    showError("Critical error: Analyze button not found");
   }
 });
 
@@ -123,13 +118,63 @@ document.addEventListener("DOMContentLoaded", async () => {
  * Fetches and parses the TSV file containing reviews.
  */
 async function loadReviews() {
-  let response;
   try {
     console.log("Attempting to fetch reviews_test.tsv...");
-    response = await fetch("reviews_test.tsv");
+    const response = await fetch("reviews_test.tsv");
     console.log("Fetch response status:", response.status);
-  } catch (err) {
-    console.error("Network error details:", err);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load TSV file (status ${response.status})`);
+    }
+
+    const tsvText = await response.text();
+    console.log(`TSV file loaded, size: ${tsvText.length} bytes`);
+
+    return new Promise((resolve, reject) => {
+      console.log("Starting PapaParse parsing...");
+      Papa.parse(tsvText, {
+        header: true,
+        delimiter: "\t",
+        skipEmptyLines: true,
+        complete: (results) => {
+          console.log("PapaParse complete");
+          try {
+            if (!results.data || !Array.isArray(results.data)) {
+              throw new Error("Parsed data is invalid.");
+            }
+            
+            console.log(`Parsed ${results.data.length} rows from TSV`);
+            console.log("Columns found:", results.meta.fields);
+
+            reviews = results.data
+              .map((row) => {
+                if (typeof row.text === "string") {
+                  return row.text.trim();
+                }
+                const firstKey = Object.keys(row)[0];
+                return typeof row[firstKey] === "string" ? row[firstKey].trim() : null;
+              })
+              .filter((text) => typeof text === "string" && text.length > 0);
+
+            console.log(`Extracted ${reviews.length} valid reviews`);
+
+            if (reviews.length === 0) {
+              throw new Error("No valid review texts found in TSV. Check file format.");
+            }
+
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        },
+        error: (err) => {
+          console.error("PapaParse error:", err);
+          reject(new Error(`TSV parsing error: ${err.message}`));
+        },
+      });
+    });
+  } catch (error) {
+    console.error("Error loading reviews:", error);
     
     // Если файл не найден, используем тестовые данные
     console.log("Using sample reviews as fallback");
@@ -145,73 +190,9 @@ async function loadReviews() {
       "Mediocre at best. There are better options available.",
       "Love it! Works perfectly and looks great."
     ];
-    return; // Возвращаемся, не продолжаем с fetch
+    console.log(`Using ${reviews.length} sample reviews`);
+    showError("Note: Using sample reviews (reviews_test.tsv not found)");
   }
-
-  if (!response.ok) {
-    // Если файл не найден, используем тестовые данные
-    console.log(`TSV file not found (status ${response.status}), using sample reviews`);
-    reviews = [
-      "This product is amazing! I love it so much. Best purchase ever!",
-      "Terrible quality. Broke after just 2 days of use. Very disappointed.",
-      "It's okay, nothing special but gets the job done.",
-      "Absolutely fantastic! Exceeded all my expectations.",
-      "Waste of money. Don't buy this product.",
-      "Good value for the price. Would recommend to others.",
-      "The worst product I've ever bought. Save your money!",
-      "Excellent quality and fast delivery. Very satisfied!",
-      "Mediocre at best. There are better options available.",
-      "Love it! Works perfectly and looks great."
-    ];
-    return;
-  }
-
-  const tsvText = await response.text();
-  console.log(`TSV file loaded, size: ${tsvText.length} bytes`);
-
-  return new Promise((resolve, reject) => {
-    console.log("Starting PapaParse parsing...");
-    Papa.parse(tsvText, {
-      header: true,
-      delimiter: "\t",
-      skipEmptyLines: true,
-      complete: (results) => {
-        console.log("PapaParse complete:", results);
-        try {
-          if (!results.data || !Array.isArray(results.data)) {
-            throw new Error("Parsed data is invalid.");
-          }
-          
-          console.log(`Parsed ${results.data.length} rows from TSV`);
-          console.log("Columns found:", results.meta.fields);
-
-          reviews = results.data
-            .map((row) => {
-              if (typeof row.text === "string") {
-                return row.text.trim();
-              }
-              const firstKey = Object.keys(row)[0];
-              return typeof row[firstKey] === "string" ? row[firstKey].trim() : null;
-            })
-            .filter((text) => typeof text === "string" && text.length > 0);
-
-          console.log(`Extracted ${reviews.length} valid reviews`);
-
-          if (reviews.length === 0) {
-            throw new Error("No valid review texts found in TSV. Check file format.");
-          }
-
-          resolve();
-        } catch (err) {
-          reject(err);
-        }
-      },
-      error: (err) => {
-        console.error("PapaParse error:", err);
-        reject(new Error(`TSV parsing error: ${err.message}`));
-      },
-    });
-  });
 }
 
 /**
@@ -252,6 +233,7 @@ async function initModel() {
         return [{ label: "NEUTRAL", score: 0.6 + Math.random() * 0.3 }];
       }
     };
+    showError("Note: Using mock sentiment model (real model failed to load)");
   }
 }
 
@@ -261,6 +243,7 @@ async function initModel() {
 async function logToGoogleSheets(data) {
   try {
     console.log("Logging data to Google Sheets:", data);
+    setLoggingStatus("Sending data to Google Sheets...");
     
     const formData = new URLSearchParams();
     formData.append("timestamp", data.timestamp);
@@ -269,7 +252,7 @@ async function logToGoogleSheets(data) {
     formData.append("confidence", data.confidence);
     formData.append("meta", JSON.stringify(data.meta));
     
-    await fetch(GOOGLE_SCRIPT_URL, {
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
       headers: {
@@ -279,10 +262,12 @@ async function logToGoogleSheets(data) {
     });
     
     console.log("Data sent to Google Sheets");
+    setLoggingStatus("✓ Data logged successfully");
     return { success: true };
     
   } catch (error) {
     console.warn("Failed to log to Google Sheets:", error);
+    setLoggingStatus("✗ Failed to log data", true);
     return { success: false, error: error.message };
   }
 }
@@ -309,39 +294,40 @@ function collectMetaData() {
  * Handles the analyze button click.
  */
 async function onAnalyzeClick() {
-  safeClearError();
+  clearError();
   
-  if (resultEl) {
-    resultEl.style.display = "none";
+  if (resultContainer) {
+    resultContainer.classList.remove('visible');
   }
 
   if (!reviews || reviews.length === 0) {
-    safeShowError("No reviews are loaded. Cannot run analysis.");
+    showError("No reviews are loaded. Cannot run analysis.");
     return;
   }
 
   if (!sentimentPipeline) {
-    safeShowError("Sentiment model is not ready yet.");
+    showError("Sentiment model is not ready yet.");
     return;
   }
 
   const review = getRandomReview();
-  if (reviewBox) {
-    reviewBox.textContent = review;
+  if (reviewDisplay) {
+    reviewDisplay.textContent = review;
+    reviewDisplay.classList.remove('empty');
   }
 
   if (analyzeBtn) {
     analyzeBtn.disabled = true;
   }
   
-  safeSetStatus("Analyzing sentiment…");
+  setStatus("Analyzing sentiment…");
 
   try {
     const output = await sentimentPipeline(review);
     const normalized = normalizeOutput(output);
     
-    if (resultEl) {
-      updateResult(normalized);
+    if (resultContainer) {
+      displayResult(normalized);
     }
     
     const metaData = collectMetaData();
@@ -353,14 +339,18 @@ async function onAnalyzeClick() {
       meta: metaData
     };
     
+    // Логируем в фоне
     setTimeout(() => {
       logToGoogleSheets(logData);
-    }, 0);
+    }, 100);
     
-    safeSetStatus("Analysis complete. Data logged.");
+    setStatus("Analysis complete. Data logged.");
     
   } catch (err) {
-    handleError(err, "Sentiment analysis failed.");
+    console.error("Analysis error:", err);
+    showError(`Sentiment analysis failed: ${err.message}`);
+    setStatus("Analysis failed");
+    setLoggingStatus("Analysis failed", true);
   } finally {
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
@@ -398,8 +388,8 @@ function normalizeOutput(output) {
 /**
  * Maps the sentiment to positive, negative, or neutral and updates the UI.
  */
-function updateResult({ label, score }) {
-  if (!resultEl) return;
+function displayResult({ label, score }) {
+  if (!resultContainer || !sentimentIcon || !sentimentLabel || !confidenceScore) return;
   
   let sentimentClass = "neutral";
   let iconClass = "fa-question-circle";
@@ -417,40 +407,15 @@ function updateResult({ label, score }) {
 
   const confidence = (score * 100).toFixed(1);
 
-  resultEl.className = `result ${sentimentClass}`;
-  resultEl.innerHTML = `
-    <i class="fa ${iconClass}"></i>
-    <span>${displayLabel} (${confidence}% confidence)</span>
-  `;
-  resultEl.style.display = "flex";
-}
-
-/**
- * Updates the status text.
- */
-function setStatus(message) {
-  safeSetStatus(message);
-}
-
-/**
- * Displays a user-friendly error message.
- */
-function showError(message) {
-  safeShowError(message);
-}
-
-/**
- * Clears any visible error message.
- */
-function clearError() {
-  safeClearError();
-}
-
-/**
- * Logs an error and shows a user-friendly message.
- */
-function handleError(err, userMessage) {
-  console.error("Error details:", err);
-  safeShowError(userMessage);
-  safeSetStatus("");
+  // Обновляем класс контейнера
+  resultContainer.className = `result-container visible ${sentimentClass}`;
+  
+  // Обновляем иконку
+  sentimentIcon.className = `sentiment-icon fas ${iconClass}`;
+  
+  // Обновляем лейбл
+  sentimentLabel.textContent = displayLabel;
+  
+  // Обновляем уверенность
+  confidenceScore.textContent = `${confidence}% confidence`;
 }

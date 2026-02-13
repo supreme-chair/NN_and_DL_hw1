@@ -232,32 +232,38 @@ async function logToSheet(data) {
     try {
         console.log('📤 Отправляем данные:', data);
         
-        // Создаем URL с параметрами
-        const params = new URLSearchParams({
+        // Создаем объект с данными
+        const payload = {
             timestamp: data.timestamp,
             review: data.review.substring(0, 200),
             sentiment: data.sentiment,
             confidence: data.confidence,
             action_taken: data.action_taken,
             meta: JSON.stringify(data.meta)
-        });
+        };
         
-        const url = SHEET_URL + '?' + params.toString();
-        console.log('📤 URL:', url);
+        console.log('📦 Payload:', payload);
         
-        // Пробуем отправить через fetch
+        // Пробуем отправить через fetch с JSON
         try {
-            const response = await fetch(url, {
-                method: 'GET',
-                mode: 'no-cors'
+            const response = await fetch(SHEET_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload)
             });
-            console.log('📤 Fetch отправлен');
-        } catch (fetchError) {
-            console.warn('Fetch error, пробуем Image:', fetchError);
             
-            // Если fetch не работает, пробуем Image
+            console.log('📤 Fetch отправлен');
+            
+        } catch (fetchError) {
+            console.warn('Fetch error, пробуем GET:', fetchError);
+            
+            // Если POST не работает, пробуем GET с параметрами
+            const params = new URLSearchParams(payload);
             const img = new Image();
-            img.src = url;
+            img.src = SHEET_URL + '?' + params.toString();
         }
         
         if (footerDiv) {
@@ -273,8 +279,6 @@ async function logToSheet(data) {
         }
     }
 }
-}
-
 // ===== АНАЛИЗ =====
 async function analyze() {
     hideError();

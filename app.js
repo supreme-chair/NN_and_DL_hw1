@@ -28,7 +28,7 @@ let isModelReady = false;
 let isDataLoaded = false;
 
 // URL для логирования - ВАШ URL
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyvyc7AeOOywS-pbBQ99ItJ2SJ5YqKEL_epicEqQVOaSIhQqPM5duHdYPfb3zjhHKTzGQ/exec';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbzDGTzLKk5iB2CwCqctagrZOd4nnpT6H0DKMPtO62sCs_AZtRpHkZeAqj-pUBKaMq2wMw/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
 function updateStatus(text) {
@@ -232,27 +232,33 @@ async function loadModel() {
     }
 }
 
-// ===== ЛОГИРОВАНИЕ =====
+// ===== ЛОГИРОВАНИЕ - УПРОЩЕННАЯ ВЕРСИЯ =====
 async function logToSheet(data) {
     try {
         console.log('📤 Отправляем данные:', data);
         
-        // Создаем URL с параметрами
-        const params = new URLSearchParams({
-            timestamp: data.timestamp,
-            review: data.review,
-            sentiment: data.sentiment,
-            confidence: data.confidence,
-            action_taken: data.action_taken,
-            meta: JSON.stringify(data.meta)
-        });
+        // Создаем простые параметры
+        const params = new URLSearchParams();
+        params.append('timestamp', data.timestamp);
+        params.append('review', data.review);
+        params.append('sentiment', data.sentiment);
+        params.append('confidence', data.confidence);
+        params.append('action_taken', data.action_taken);
+        params.append('meta', JSON.stringify(data.meta));
         
         const url = SHEET_URL + '?' + params.toString();
         console.log('📤 URL:', url);
         
-        // Отправляем через Image (самый надежный способ)
-        const img = new Image();
-        img.src = url;
+        // Используем fetch с режимом no-cors
+        fetch(url, {
+            method: 'GET',
+            mode: 'no-cors'
+        }).catch(err => {
+            console.warn('Fetch error, пробуем Image:', err);
+            // Если fetch не работает, пробуем Image
+            const img = new Image();
+            img.src = url;
+        });
         
         if (footerDiv) {
             footerDiv.innerHTML = '✅ Данные отправлены';

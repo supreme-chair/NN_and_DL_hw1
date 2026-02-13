@@ -8,7 +8,7 @@ const statusDiv = document.getElementById('status');
 const errorDiv = document.getElementById('error');
 const footerDiv = document.getElementById('footer');
 
-// СОЗДАЕМ элемент для действий, если его нет
+// СОЗДАЕМ элемент для действий, если его нет - ИСПОЛЬЗУЕМ LET, А НЕ CONST
 let actionDiv = document.getElementById('action-result');
 if (!actionDiv) {
     actionDiv = document.createElement('div');
@@ -23,7 +23,7 @@ let model = null;
 let isModelReady = false;
 let isDataLoaded = false;
 
-// URL для логирования - ИСПРАВЛЕНО на ваш новый URL
+// URL для логирования
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxrjX3Amx_6IybZfRbZkTjh-gSOTTSE_IG9IaHnrg__hcXa_HQQ2wKmub0pO07CCF0yFQ/exec';
 
 // ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -249,51 +249,32 @@ async function logToSheet(data) {
     try {
         console.log('📤 Отправляем в Google Sheets:', data);
         
-        // Используем JSONP подход для обхода CORS
-        const callbackName = 'jsonp_callback_' + Date.now();
+        // Используем fetch с no-cors режимом
+        const formData = new URLSearchParams();
+        formData.append('timestamp', data.timestamp);
+        formData.append('review', data.review);
+        formData.append('sentiment', data.sentiment);
+        formData.append('confidence', data.confidence);
+        formData.append('action_taken', data.action_taken);
+        formData.append('meta', JSON.stringify(data.meta));
         
-        return new Promise((resolve, reject) => {
-            // Создаем скрипт для JSONP
-            const script = document.createElement('script');
-            const params = new URLSearchParams({
-                timestamp: data.timestamp,
-                review: data.review,
-                sentiment: data.sentiment,
-                confidence: data.confidence,
-                action_taken: data.action_taken,
-                meta: JSON.stringify(data.meta),
-                callback: callbackName
-            });
-            
-            // Определяем callback функцию глобально
-            window[callbackName] = function(response) {
-                console.log('✅ Ответ от сервера:', response);
-                delete window[callbackName];
-                document.body.removeChild(script);
-                
-                if (footerDiv) {
-                    footerDiv.innerHTML = '✅ Данные сохранены';
-                    footerDiv.style.color = '#4caf50';
-                }
-                resolve(response);
-            };
-            
-            // Добавляем скрипт на страницу
-            script.src = SHEET_URL + '?' + params.toString();
-            script.onerror = (error) => {
-                console.error('❌ Ошибка отправки:', error);
-                delete window[callbackName];
-                document.body.removeChild(script);
-                
-                if (footerDiv) {
-                    footerDiv.innerHTML = '⚠️ Ошибка сохранения';
-                    footerDiv.style.color = '#f44336';
-                }
-                reject(error);
-            };
-            
-            document.body.appendChild(script);
+        const response = await fetch(SHEET_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData.toString()
         });
+        
+        console.log('✅ Данные отправлены');
+        
+        if (footerDiv) {
+            footerDiv.innerHTML = '✅ Данные сохранены';
+            footerDiv.style.color = '#4caf50';
+        }
+        
+        return { success: true };
         
     } catch (error) {
         console.error('❌ Ошибка логирования:', error);
@@ -301,6 +282,7 @@ async function logToSheet(data) {
             footerDiv.innerHTML = '⚠️ Ошибка сохранения';
             footerDiv.style.color = '#f44336';
         }
+        return { success: false, error: error.message };
     }
 }
 
